@@ -1,5 +1,5 @@
 ## data
-/data/creditcardfraud.zip
+data/creditcardfraud.zip
 
 ## MLflow
 mlruns
@@ -7,5 +7,4 @@ mlruns
 ## PyCharm
 .idea
 
-##
-/config.py
+lib/__pycache__
