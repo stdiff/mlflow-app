@@ -1,13 +1,25 @@
-from typing import Union, Tuple
-import mlflow
+from typing import Union, Tuple, Callable
 
 import os
 import hashlib
 import re
+import pickle
+from pathlib import Path
+from shutil import rmtree
 from datetime import datetime
 
+import mlflow
+import pandas as pd
 
-def sha256sum(path) -> str:
+class ExperimentNotFoundError(Exception):
+    pass
+
+
+class RunNotFoundError(Exception):
+    pass
+
+
+def sha256sum(path:str) -> str:
     """
     Compute sha256 checksum
 
@@ -22,16 +34,17 @@ def sha256sum(path) -> str:
         return ""
 
 
-def look_up_run_load(client:mlflow.tracking.MlflowClient, tz,
+def look_up_run_load(client:mlflow.tracking.MlflowClient, tz=None,
                      retrieval_time:Union[int,str]=None, table:str=None,
                      dataset:str=None) -> Tuple[str,str]:
     """
     find uuid of a run with the given retrieval_time, table and dataset.
     If retrieval_time is a date in ISO 8601 format (i.e. YYYY-MM-DD),
     then the newest run of the given date is returned.
+    If no run is found, an error is raised.
 
     :param client: MlflowClient instance
-    :param tz: pytz
+    :param tz: pytz timezone (needed if retrieval_time is a date.)
     :param retrieval_time: unix time (int) or YYYY-MM-DD (str)
     :param table: name of the table/data
     :param dataset: "train", "test" or "full"
@@ -41,15 +54,15 @@ def look_up_run_load(client:mlflow.tracking.MlflowClient, tz,
     try:
         experiment_id = client.get_experiment_by_name("load").experiment_id
     except AttributeError:
-        print("The experiment 'load' cannot be found.")
-        return "",""
+        raise ExperimentNotFoundError("The experiment 'load' cannot be found.")
 
     param_keys = ["retrieval_time", "table", "dataset"]
     param_vals = [str(retrieval_time), table, dataset]
     query_dict = dict(zip(param_keys, param_vals))
 
-    if re.search(r"\d+$", retrieval_time):
+    if re.match(r"\d+$", retrieval_time):
         ### retrieval_time is a unixtime
+        print("Looking for the exact dataset (retrieval_time=%s)" % retrieval_time)
 
         for run_info in client.list_run_infos(experiment_id):
             run = client.get_run(run_info.run_uuid)
@@ -57,17 +70,15 @@ def look_up_run_load(client:mlflow.tracking.MlflowClient, tz,
             if set(param_keys).issubset(param_dict.keys()):
                 if all([query_dict[k] == param_dict[k] for k in param_keys]):
                     return run_info.run_uuid, run_info.artifact_uri
-        return "","" ## not found
+
+        raise RunNotFoundError("There is no run with the given condition.")
 
     elif isinstance(retrieval_time, str):
         ### retrieval_time is a date in YYYY-MM-DD
+        print("Looking for the newest dataset on %s" % retrieval_time)
 
-        try:
-            d = datetime.strptime(retrieval_time, "%Y-%M-%d")
-            query_date = tz.localize(datetime(year=d.year, month=d.month, day=d.day)).date()
-        except ValueError as e:
-            print(e)
-            return "",""
+        d = datetime.strptime(retrieval_time, "%Y-%M-%d")
+        query_date = tz.localize(datetime(year=d.year, month=d.month, day=d.day)).date()
 
         max_retrieval_time = 0
         found_run_uuid = ""
@@ -82,16 +93,61 @@ def look_up_run_load(client:mlflow.tracking.MlflowClient, tz,
 
                 if query_date == run_retrieval_date and \
                         all([query_dict[k] == param_dict[k] for k in param_keys[1:]]):
-                    print(run_info.run_uuid, run_retrieval_date, param_dict)
+                    #print(run_info.run_uuid, run_retrieval_date, param_dict)
                     if max_retrieval_time <= run_retrieval_unixtime:
                         max_retrieval_time = run_retrieval_unixtime
                         found_run_uuid = run_info.run_uuid
                         found_artifact_uri = run_info.artifact_uri
 
-        return found_run_uuid, found_artifact_uri
-
-    elif not retrieval_time:
-        return "",""
+        if max_retrieval_time:
+            return found_run_uuid, found_artifact_uri
+        else:
+            raise RunNotFoundError("There is no run with the given condition.")
 
     else:
         raise ValueError("The value of retrieval_time is invalid.")
+
+
+def get_artifact(client:mlflow.tracking.MlflowClient, run_uuid:str, artifact_uri:str, artifact_path:str,
+                 file_name:str=None) -> Union[pd.DataFrame,Callable[[pd.DataFrame],pd.DataFrame]]:
+    """
+    download the specified artifact and deserialize it.
+
+    :param client: mlflow.tracking.MlflowClient instance
+    :param run_uuid: uuid of the run (cf. lib.enrichment.look_up_run_load)
+    :param artifact_uri: artifact_url (cf. lib.enrichment.look_up_run_load)
+    :param artifact_path: "data" (DataFrame) or "function" (function)
+    :param file_name: name of the file (use it if there are several files in the same directory.)
+    :return: DataFrame or Python function
+    """
+
+    print("Downloading the artifact")
+    tmp_dir = Path(client.download_artifacts(run_uuid, artifact_uri))
+    artifact_dir = tmp_dir.joinpath(artifact_path)
+    tmp_dir = tmp_dir.parent
+
+    if file_name:
+        file_path = artifact_dir.joinpath(file_name)
+        if file_path.exists():
+            artifact_local = file_path
+        else:
+            raise FileNotFoundError("%s can not be found" % file_path)
+    else:
+        print("Picking the first file in the directory")
+        artifacts = list(artifact_dir.iterdir())
+        if artifacts:
+            artifact_local = artifacts[0]
+        else:
+            raise FileNotFoundError("No artifacts are found in %s." % artifact_dir)
+
+    print("Deserializing the found pickle data.")
+    if artifact_path == "data":
+        obj = pd.read_pickle(str(artifact_local))
+    else:
+        with artifact_local.open() as f:
+            obj = pickle.load(f)
+
+    print("Deleting the temporary directory %s" % tmp_dir)
+    rmtree(str(tmp_dir))
+
+    return obj
