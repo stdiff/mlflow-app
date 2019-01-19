@@ -8,3 +8,5 @@ mlruns
 .idea
 
 lib/__pycache__
+
+./config.ini
