@@ -112,7 +112,8 @@ def processing(table:str, retrieval_time:str, logic:str):
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
 
     ## Retrieve data from mlflow
-    run_uuid, artifact_uri = enrichment.look_up_run_load(client, tz, retrieval_time, table)
+    run_uuid, artifact_uri = enrichment.look_up_run(client, experiment="load", query=table,
+                                                    run_time=retrieval_time, tz=tz)
     df_train = enrichment.get_artifact(client, run_uuid, artifact_uri, file_name="training_set")
     df_test = enrichment.get_artifact(client, run_uuid, artifact_uri, file_name="test_set")
 

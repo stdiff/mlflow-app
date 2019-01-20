@@ -80,73 +80,80 @@ def store_artifact(data:Dict[str, Any], experiment:str,
             shutil.rmtree(str(tmp_dir))
 
 
-
-def look_up_run_load(client:mlflow.tracking.MlflowClient, tz=None,
-                     retrieval_time:Union[int,str]=None, table:str=None,
-                     dataset:str=None) -> Tuple[str,str]:
+def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
+                query:str, run_time:Union[int,str], tz=None) -> Tuple[str,str]:
     """
-    find uuid of a run with the given retrieval_time, table and dataset.
-    If retrieval_time is a date in ISO 8601 format (i.e. YYYY-MM-DD),
+    find uuid of a run with the given criteria.
+    If run_time is a date in ISO 8601 format (i.e. YYYY-MM-DD),
     then the newest run of the given date is returned.
     If no run is found, an error is raised.
 
-    :param client: MlflowClient instance
-    :param tz: pytz timezone (needed if retrieval_time is a date.)
-    :param retrieval_time: unix time (int) or YYYY-MM-DD (str)
-    :param table: name of the table/data
-    :param dataset: "train", "test" or "full"
+    :param client: mlflow.tracking.MlflowClient instance
+    :param experiment: "load", "processing" or "model"
+    :param query: value of "table", "logic" or "algorithm"
+    :param run_time: value of "retrieval_time", "processed_time" or "trained_time" (or ISO date)
+    :param tz: pytz timezone (needed only if run_time is in ISO date)
     :return: (uuid of the found run, artifact_uri of the run)
     """
 
+    """
+    NOTE: The rule of the names should be decided by team at first and not be changed.    
+    """
+    exp_to_key = {"load": "table", "processing": "logic", "model": "algorithm"}
+    exp_to_time = {"load": "retrieval_time", "processing": "processed_time", "model": "trained_time"}
+
     try:
-        experiment_id = client.get_experiment_by_name("load").experiment_id
+        query_dict = {exp_to_key[experiment]: query, exp_to_time[experiment]: str(run_time)}
+        experiment_id = client.get_experiment_by_name(experiment).experiment_id
+    except KeyError:
+        raise ExperimentNotFoundError("The experiment '%s' cannot be found." % experiment)
     except AttributeError:
-        raise ExperimentNotFoundError("The experiment 'load' cannot be found.")
+        raise ExperimentNotFoundError("The experiment '%s' cannot be found." % experiment)
 
-    param_keys = ["retrieval_time", "table"]
-    param_vals = [str(retrieval_time), table, dataset]
-    query_dict = dict(zip(param_keys, param_vals))
-
-    if re.match(r"\d+$", retrieval_time):
+    #####
+    print("Searching a run in expeciment '%s'" % experiment)
+    if re.match(r"\d+$", query_dict[exp_to_time[experiment]]):
         ### retrieval_time is a unixtime
-        print("Looking for the exact dataset (retrieval_time=%s)" % retrieval_time)
+        print("Looking for the exact dataset (run_time=%s)" % run_time)
 
         for run_info in client.list_run_infos(experiment_id):
             run = client.get_run(run_info.run_uuid)
             param_dict = {param.key: param.value for param in run.data.params}
-            if set(param_keys).issubset(param_dict.keys()):
-                if all([query_dict[k] == param_dict[k] for k in param_keys]):
+
+            if set(query_dict.keys()).issubset(param_dict.keys()):
+                if all([query_dict[k] == param_dict[k] for k in query_dict.keys()]):
                     return run_info.run_uuid, run_info.artifact_uri
 
         raise RunNotFoundError("There is no run with the given condition.")
 
-    elif isinstance(retrieval_time, str):
+    elif isinstance(run_time, str):
         ### retrieval_time is a date in YYYY-MM-DD
-        print("Looking for the newest dataset on %s" % retrieval_time)
+        print("Looking for the newest dataset on %s" % run_time)
+        if tz is None:
+            raise ValueError("'tz' object is None.")
 
-        d = datetime.strptime(retrieval_time, "%Y-%M-%d")
+        d = datetime.strptime(run_time, "%Y-%M-%d")
         query_date = tz.localize(datetime(year=d.year, month=d.month, day=d.day)).date()
 
-        max_retrieval_time = 0
+        max_param_time = 0
         found_run_uuid = ""
         found_artifact_uri = ""
 
         for run_info in client.list_run_infos(experiment_id):
             run = client.get_run(run_info.run_uuid)
             param_dict = {param.key: param.value for param in run.data.params}
-            if set(param_keys).issubset(param_dict.keys()):
-                run_retrieval_unixtime = int(param_dict["retrieval_time"])
-                run_retrieval_date = datetime.fromtimestamp(run_retrieval_unixtime, tz=tz).date()
+            if set(query_dict.keys()).issubset(param_dict.keys()):
+                param_unixtime = int(param_dict[exp_to_time[experiment]])
+                param_date = datetime.fromtimestamp(param_unixtime, tz=tz).date()
 
-                if query_date == run_retrieval_date and \
-                        all([query_dict[k] == param_dict[k] for k in param_keys[1:]]):
-                    #print(run_info.run_uuid, run_retrieval_date, param_dict)
-                    if max_retrieval_time <= run_retrieval_unixtime:
-                        max_retrieval_time = run_retrieval_unixtime
+                if query_date == param_date and \
+                   query_dict[exp_to_key[experiment]] == param_dict[exp_to_key[experiment]]:
+                    if max_param_time <= param_unixtime:
+                        max_param_time = param_unixtime
                         found_run_uuid = run_info.run_uuid
                         found_artifact_uri = run_info.artifact_uri
 
-        if max_retrieval_time:
+        if max_param_time:
             return found_run_uuid, found_artifact_uri
         else:
             raise RunNotFoundError("There is no run with the given condition.")
