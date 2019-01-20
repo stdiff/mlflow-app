@@ -1,15 +1,19 @@
-from typing import Union, Tuple, Callable
+from typing import Union, Tuple, Callable, Any
 
 import os
-import hashlib
 import re
 import pickle
+import shutil
+import hashlib
+import tempfile
 from pathlib import Path
 from shutil import rmtree
 from datetime import datetime
+from typing import Dict
 
 import mlflow
 import pandas as pd
+
 
 class ExperimentNotFoundError(Exception):
     pass
@@ -32,6 +36,49 @@ def sha256sum(path:str) -> str:
         return check_sum.hexdigest()
     else:
         return ""
+
+
+def store_artifact(data:Dict[str, Any], experiment:str,
+                   parameters:Dict[str, Any], metrics:Dict[str, Any]):
+    """
+    Start a run and store the given DataFrame as an artifact.
+
+    :param data: file_name (without .pkl): Python Object
+    :param experiment: name of the experiment
+    :param parameters:
+    :param metrics:
+    """
+
+    #if experiment not in ["load","processing","model"]:
+    #    raise ExperimentNotFoundError("You gave a wrong experiment: %s" % experiment)
+
+    mlflow.set_experiment(experiment)
+
+    with mlflow.start_run():
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            for artifact_path, obj in data.items():
+                file_name = "%s.pkl" % artifact_path
+                target_file = tmp_dir.joinpath(file_name)
+                print("Saving %s ..." % file_name)
+                with target_file.open("wb") as fo:
+                    pickle.dump(obj, fo)
+                mlflow.log_artifact(str(target_file), "data")
+
+            for key in sorted(parameters.keys()):
+                val = parameters[key]
+                mlflow.log_param(key,val)
+
+            for key in sorted(metrics.keys()):
+                val = metrics[key]
+                mlflow.log_metric(key,val)
+
+        except:
+            raise Exception("Failed to save the data.")
+
+        finally:
+            shutil.rmtree(str(tmp_dir))
+
 
 
 def look_up_run_load(client:mlflow.tracking.MlflowClient, tz=None,
