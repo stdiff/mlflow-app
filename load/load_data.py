@@ -23,10 +23,7 @@ Retrieve the row data and start runs.
 """
 
 import click
-import tempfile
-import shutil
 from configparser import ConfigParser
-from pathlib import Path
 from datetime import datetime
 from pytz import timezone
 
@@ -43,63 +40,6 @@ tz = timezone(config["general"]["timezone"])
 
 ### mlflow initialization
 mlflow.set_tracking_uri(config["mlflow"]["tracking_uri"])
-
-### TODO: logger (do we need it?)
-# import logging
-# import sys
-# logging.basicConfig(stream=sys.stdout,
-#                     level=print(),
-#                     format='%(asctime)s %(message)s',
-#                     datefmt='%Y-%m-%d %H:%M:%S') ### Logger
-
-
-def store_data(data:pd.DataFrame, experiment:str, table:str, retrieval_time:int, dataset:str,
-               size:float=None, random_state=None) -> bool:
-    """
-    Store the given DataFrame as an artifact .
-
-    :param data:
-    :param experiment:
-    :param table:
-    :param retrieval_time:
-    :param dataset:
-    :param size:
-    :param random_state:
-    :return:
-    """
-
-    if experiment not in ["load","processing","model"]:
-        raise enrichment.ExperimentNotFoundError("You gave a wrong experiment: %s" % experiment)
-
-    mlflow.set_experiment(experiment)
-    artifact_path = "data"
-    file_name = "dataset_%s_%s.pkl" % (table, dataset)
-
-    with mlflow.start_run():
-        tmp_dir = Path(tempfile.mkdtemp())
-        try:
-            target_file = tmp_dir.joinpath(file_name)
-            print("Saving %s ..." % file_name)
-            data.to_pickle(target_file)
-
-            mlflow.log_param("table", table)
-            mlflow.log_param("retrieval_time", retrieval_time)
-            mlflow.log_param("dataset", dataset)
-            mlflow.log_param("size", size)
-            if random_state is not None:
-                mlflow.log_param("random_state", random_state)
-
-            mlflow.log_metric("nrow", data.shape[0])
-            mlflow.log_metric("ncol", data.shape[1])
-            mlflow.log_artifact(str(target_file), artifact_path)
-
-        except:
-            raise Exception("Failed to save the data. (table=%s, dataset=%s)" % (table,dataset))
-
-        finally:
-            shutil.rmtree(str(tmp_dir))
-
-    return True
 
 
 @click.command(help="Register an original data set, a training set and a test set.")
@@ -137,12 +77,12 @@ def load(random_state, test_size, data_path, retrieval_time):
 
         df_train, df_test = train_test_split(df, test_size=test_size, random_state=random_state)
 
-        store_data(df, experiment="load", table="transaction", retrieval_time=retrieval_time,
-                   dataset="full", size=1)
-        store_data(df_train, experiment="load", table="transaction", retrieval_time=retrieval_time,
-                   dataset="train", size=1-test_size, random_state=random_state)
-        store_data(df_test, experiment="load", table="transaction", retrieval_time=retrieval_time,
-                   dataset="test", size=test_size, random_state=random_state)
+        data = {"training_set": df_train, "test_set": df_test, "full": df}
+        parameters = {"table": "transactions", "retrieval_time": retrieval_time, "random_state":random_state,
+                      "test_size": test_size}
+        metrics = {"ncol": df.shape[1], "nrow_train": df_train.shape[0], "nrow_test": df_test.shape[0],
+                   "nrow": df.shape[0]}
+        enrichment.store_artifact(data, experiment="load", parameters=parameters, metrics=metrics)
 
 
 if __name__ == "__main__":

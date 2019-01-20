@@ -1,4 +1,4 @@
-from typing import Union, Tuple, Callable, Any
+from typing import Union, Tuple, Any
 
 import os
 import re
@@ -103,7 +103,7 @@ def look_up_run_load(client:mlflow.tracking.MlflowClient, tz=None,
     except AttributeError:
         raise ExperimentNotFoundError("The experiment 'load' cannot be found.")
 
-    param_keys = ["retrieval_time", "table", "dataset"]
+    param_keys = ["retrieval_time", "table"]
     param_vals = [str(retrieval_time), table, dataset]
     query_dict = dict(zip(param_keys, param_vals))
 
@@ -155,46 +155,33 @@ def look_up_run_load(client:mlflow.tracking.MlflowClient, tz=None,
         raise ValueError("The value of retrieval_time is invalid.")
 
 
-def get_artifact(client:mlflow.tracking.MlflowClient, run_uuid:str, artifact_uri:str, artifact_path:str,
-                 file_name:str=None) -> Union[pd.DataFrame,Callable[[pd.DataFrame],pd.DataFrame]]:
+def get_artifact(client:mlflow.tracking.MlflowClient, run_uuid:str, artifact_uri:str,
+                 file_name:str) -> Any:
     """
     download the specified artifact and deserialize it.
 
     :param client: mlflow.tracking.MlflowClient instance
     :param run_uuid: uuid of the run (cf. lib.enrichment.look_up_run_load)
     :param artifact_uri: artifact_url (cf. lib.enrichment.look_up_run_load)
-    :param artifact_path: "data" (DataFrame) or "function" (function)
-    :param file_name: name of the file (use it if there are several files in the same directory.)
+    :param file_name: name of the file (without ".pkl")
     :return: DataFrame or Python function
     """
 
     print("Downloading the artifact")
     tmp_dir = Path(client.download_artifacts(run_uuid, artifact_uri))
-    artifact_dir = tmp_dir.joinpath(artifact_path)
+    artifact_dir = tmp_dir.joinpath("data")
     tmp_dir = tmp_dir.parent
 
-    if file_name:
-        file_path = artifact_dir.joinpath(file_name)
-        if file_path.exists():
-            artifact_local = file_path
-        else:
-            raise FileNotFoundError("%s can not be found" % file_path)
-    else:
-        print("Picking the first file in the directory")
-        artifacts = list(artifact_dir.iterdir())
-        if artifacts:
-            artifact_local = artifacts[0]
-        else:
-            raise FileNotFoundError("No artifacts are found in %s." % artifact_dir)
-
-    print("Deserializing the found pickle data.")
-    if artifact_path == "data":
-        obj = pd.read_pickle(str(artifact_local))
-    else:
-        with artifact_local.open() as f:
+    file_path = artifact_dir.joinpath("%s.pkl" % file_name)
+    if file_path.exists():
+        print("Deserializing the found pickle data.")
+        with file_path.open("rb") as f:
             obj = pickle.load(f)
 
-    print("Deleting the temporary directory %s" % tmp_dir)
-    rmtree(str(tmp_dir))
+        print("Deleting the temporary directory %s" % tmp_dir)
+        rmtree(str(tmp_dir))
 
-    return obj
+        return obj
+
+    else:
+        raise FileNotFoundError("%s can not be found" % file_path)
