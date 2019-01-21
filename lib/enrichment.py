@@ -49,9 +49,6 @@ def store_artifact(data:Dict[str, Any], experiment:str,
     :param metrics:
     """
 
-    #if experiment not in ["load","processing","model"]:
-    #    raise ExperimentNotFoundError("You gave a wrong experiment: %s" % experiment)
-
     mlflow.set_experiment(experiment)
 
     with mlflow.start_run():

@@ -107,7 +107,7 @@ class Processor(TransformerMixin):
 @click.option("--retrieval_time", default=None) ## CSV
 @click.option("--logic", default="plain")
 def processing(table:str, retrieval_time:str, logic:str):
-    print("-" * 20 + " load start")
+    print("-" * 20 + " data processing start")
 
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
 
