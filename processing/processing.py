@@ -28,21 +28,6 @@ target = config["data"]["target"]
 ### mlflow initialization
 mlflow.set_tracking_uri(config["mlflow"]["tracking_uri"])
 
-
-class SecToHour(TransformerMixin):
-    def __init__(self, unit:str="h"):
-        """
-        A harmless class
-        """
-        self.unit = unit
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        return X / (60*60)
-
-
 class Processor(TransformerMixin):
     def __init__(self, features:List[str], target:str):
         """
@@ -101,12 +86,18 @@ class Processor(TransformerMixin):
 
         return data
 
+def preprocessor(X: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+    cols = ["Time"] + ["V%d" % j for j in range(1, 29)] + ["Amount"]
+    X_projected = X[cols].copy()
+    return X_projected
 
 @click.command(help="Convert the tables into a feature matrix and store the convert function.")
 @click.option("--table", default=None) ## CSV
 @click.option("--retrieval_time", default=None) ## CSV
 @click.option("--logic", default="plain")
 def processing(table:str, retrieval_time:str, logic:str):
+
     print("-" * 20 + " data processing start")
 
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
@@ -118,10 +109,9 @@ def processing(table:str, retrieval_time:str, logic:str):
     df_test = enrichment.get_artifact(client, run_uuid, artifact_uri, file_name="test_set")
 
     ## define the argument of enrichment.store_artifact
-    features = ["Time"] + ["V%d" % j for j in range(1, 29)] + ["Amount"]
-    data = {"processor": Processor(features=features, target=target)}
-    data["training_set"] = data["processor"].fit_transform(df_train)
-    data["test_set"] = data["processor"].transform(df_test)
+    data = { "processor": preprocessor,
+             "training_set": df_train,
+             "test_set": df_test}
 
     parameters = {"retrieval_time": retrieval_time,
                   "table": table,
@@ -130,7 +120,7 @@ def processing(table:str, retrieval_time:str, logic:str):
                   }
     metrics= {"ncol": data["training_set"].shape[1],
               "nrow_train": data["training_set"].shape[0],
-              "nrow_test": data["test_set"].shape[0]
+              "nrow_test" : data["test_set"].shape[0]
               }
 
     enrichment.store_artifact(data, experiment="processing", parameters=parameters, metrics=metrics)

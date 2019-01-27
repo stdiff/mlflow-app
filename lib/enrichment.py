@@ -2,7 +2,6 @@ from typing import Union, Tuple, Any
 
 import os
 import re
-import pickle
 import shutil
 import hashlib
 import tempfile
@@ -10,10 +9,13 @@ from pathlib import Path
 from shutil import rmtree
 from datetime import datetime
 from typing import Dict
+import dill as pickle
+#import pickle
 
 import mlflow
+#import mlflow.pyfunc
+import mlflow.sklearn
 import pandas as pd
-
 
 class ExperimentNotFoundError(Exception):
     pass
@@ -38,8 +40,14 @@ def sha256sum(path:str) -> str:
         return ""
 
 
+def compute_score(model, X:pd.DataFrame, pos_label:Union[str,float]=1) -> pd.Series:
+    col = list(model.classes_).index(pos_label)
+    return pd.Series(model.predict_proba(X)[:, col], name="score", index=X.index)
+
+
 def store_artifact(data:Dict[str, Any], experiment:str,
-                   parameters:Dict[str, Any], metrics:Dict[str, Any]):
+                   parameters:Dict[str, Any], metrics:Dict[str, Any],
+                   model:Any=None):
     """
     Start a run and store the given DataFrame as an artifact.
 
@@ -47,13 +55,15 @@ def store_artifact(data:Dict[str, Any], experiment:str,
     :param experiment: name of the experiment
     :param parameters:
     :param metrics:
+    :param model:
     """
 
     mlflow.set_experiment(experiment)
 
     with mlflow.start_run():
         tmp_dir = Path(tempfile.mkdtemp())
-        try:
+        #try:
+        if True:
             for artifact_path, obj in data.items():
                 file_name = "%s.pkl" % artifact_path
                 target_file = tmp_dir.joinpath(file_name)
@@ -61,6 +71,9 @@ def store_artifact(data:Dict[str, Any], experiment:str,
                 with target_file.open("wb") as fo:
                     pickle.dump(obj, fo)
                 mlflow.log_artifact(str(target_file), "data")
+
+            if model is not None:
+                mlflow.sklearn.log_model(model, "model")
 
             for key in sorted(parameters.keys()):
                 val = parameters[key]
@@ -70,11 +83,11 @@ def store_artifact(data:Dict[str, Any], experiment:str,
                 val = metrics[key]
                 mlflow.log_metric(key,val)
 
-        except:
-            raise Exception("Failed to save the data.")
+        #except:
+        #    raise Exception("Failed to save the data.")
 
-        finally:
-            shutil.rmtree(str(tmp_dir))
+        #finally:
+        shutil.rmtree(str(tmp_dir))
 
 
 def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
@@ -170,8 +183,9 @@ def get_artifact(client:mlflow.tracking.MlflowClient, run_uuid:str, artifact_uri
     :param file_name: name of the file (without ".pkl")
     :return: DataFrame or Python function
     """
+    #import cloudpickle
 
-    print("Downloading the artifact")
+    print("Downloading the artifact (%s.pkl)" % file_name)
     tmp_dir = Path(client.download_artifacts(run_uuid, artifact_uri))
     artifact_dir = tmp_dir.joinpath("data")
     tmp_dir = tmp_dir.parent
