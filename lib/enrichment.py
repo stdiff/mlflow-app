@@ -1,5 +1,8 @@
-from typing import Union, Tuple, Any
+"""
+Helper functions to get along with MLflow
+"""
 
+from typing import Union, Tuple, Any
 import os
 import re
 import shutil
@@ -13,7 +16,6 @@ import dill as pickle
 #import pickle
 
 import mlflow
-#import mlflow.pyfunc
 import mlflow.sklearn
 import pandas as pd
 
@@ -45,53 +47,48 @@ def compute_score(model, X:pd.DataFrame, pos_label:Union[str,float]=1) -> pd.Ser
     return pd.Series(model.predict_proba(X)[:, col], name="score", index=X.index)
 
 
-def store_artifact(data:Dict[str, Any], experiment:str,
+def store_artifact(data:Dict[str, Any],
                    parameters:Dict[str, Any], metrics:Dict[str, Any],
                    model:Any=None):
     """
     Start a run and store the given DataFrame as an artifact.
 
     :param data: file_name (without .pkl): Python Object
-    :param experiment: name of the experiment
-    :param parameters:
-    :param metrics:
-    :param model:
+    :param parameters: parameters for a run
+    :param metrics: metrics for a run
+    :param model: trained model
     """
 
-    mlflow.set_experiment(experiment)
+    tmp_dir = Path(tempfile.mkdtemp())
+    try:
+        for artifact_path, obj in data.items():
+            file_name = "%s.pkl" % artifact_path
+            target_file = tmp_dir.joinpath(file_name)
+            print("Saving %s ..." % file_name)
+            with target_file.open("wb") as fo:
+                pickle.dump(obj, fo)
+            mlflow.log_artifact(str(target_file), "data")
 
-    with mlflow.start_run():
-        tmp_dir = Path(tempfile.mkdtemp())
-        #try:
-        if True:
-            for artifact_path, obj in data.items():
-                file_name = "%s.pkl" % artifact_path
-                target_file = tmp_dir.joinpath(file_name)
-                print("Saving %s ..." % file_name)
-                with target_file.open("wb") as fo:
-                    pickle.dump(obj, fo)
-                mlflow.log_artifact(str(target_file), "data")
+        if model is not None:
+            mlflow.sklearn.log_model(model, "model")
 
-            if model is not None:
-                mlflow.sklearn.log_model(model, "model")
+        for key in sorted(parameters.keys()):
+            val = parameters[key]
+            mlflow.log_param(key,val)
 
-            for key in sorted(parameters.keys()):
-                val = parameters[key]
-                mlflow.log_param(key,val)
+        for key in sorted(metrics.keys()):
+            val = metrics[key]
+            mlflow.log_metric(key,val)
 
-            for key in sorted(metrics.keys()):
-                val = metrics[key]
-                mlflow.log_metric(key,val)
+    except:
+        raise Exception("Failed to save the data.")
 
-        #except:
-        #    raise Exception("Failed to save the data.")
-
-        #finally:
+    finally:
         shutil.rmtree(str(tmp_dir))
 
 
 def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
-                query:str, run_time:Union[int,str], tz=None) -> Tuple[str,str]:
+                query:str, run_time:Union[int,str], tz=None) -> Tuple[str,str,str]:
     """
     find uuid of a run with the given criteria.
     If run_time is a date in ISO 8601 format (i.e. YYYY-MM-DD),
@@ -103,7 +100,7 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
     :param query: value of "table", "logic" or "algorithm"
     :param run_time: value of "retrieval_time", "processed_time" or "trained_time" (or ISO date)
     :param tz: pytz timezone (needed only if run_time is in ISO date)
-    :return: (uuid of the found run, artifact_uri of the run)
+    :return: (uuid of the found run, artifact_uri of the run, retrieval/processed/trained_time)
     """
 
     """
@@ -132,7 +129,7 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
 
             if set(query_dict.keys()).issubset(param_dict.keys()):
                 if all([query_dict[k] == param_dict[k] for k in query_dict.keys()]):
-                    return run_info.run_uuid, run_info.artifact_uri
+                    return run_info.run_uuid, run_info.artifact_uri, query_dict[exp_to_time[experiment]]
 
         raise RunNotFoundError("There is no run with the given condition.")
 
@@ -164,7 +161,7 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
                         found_artifact_uri = run_info.artifact_uri
 
         if max_param_time:
-            return found_run_uuid, found_artifact_uri
+            return found_run_uuid, found_artifact_uri, str(max_param_time)
         else:
             raise RunNotFoundError("There is no run with the given condition.")
 
@@ -183,7 +180,6 @@ def get_artifact(client:mlflow.tracking.MlflowClient, run_uuid:str, artifact_uri
     :param file_name: name of the file (without ".pkl")
     :return: DataFrame or Python function
     """
-    #import cloudpickle
 
     print("Downloading the artifact (%s.pkl)" % file_name)
     tmp_dir = Path(client.download_artifacts(run_uuid, artifact_uri))
