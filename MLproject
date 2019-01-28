@@ -1,0 +1,26 @@
+name: Fraud Detection
+
+conda_env: conda.yaml
+
+entry_points:
+  load:
+    parameters:
+      retrieval_time: string
+      random_state: {type: float, default: 42}
+      test_size: {type: float, default: 0.4}
+      data_path: {type: path, default: data/creditcardfraud.zip}
+    command: "PYTHONPATH=. python load/load_data.py --random_state {random_state} --test_size {test_size} --data_path {data_path} --retrieval_time {retrieval_time}"
+
+  processing:
+    parameters:
+      table: string
+      retrieval_time: string
+      logic: {type: string, default: plain}
+    command: "PYTHONPATH=. python processing/processing.py --table {table} --retrieval_time {retrieval_time} --logic {logic}"
+
+  model:
+    parameters:
+      logic: string
+      processed_time: string
+      random_state: {type: float, default: 3}
+    command: "PYTHONPATH=. python model/plr.py --logic {logic} --processed_time {processed_time} --random_state {random_state}"
