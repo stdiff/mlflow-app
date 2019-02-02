@@ -7,7 +7,7 @@ run:
 """
 
 import click
-from typing import Callable
+from typing import Callable, Tuple
 from datetime import datetime
 from pytz import timezone
 from configparser import ConfigParser
@@ -27,13 +27,13 @@ target = config["data"]["target"]
 mlflow.set_tracking_uri(config["mlflow"]["tracking_uri"])
 
 
-def generate_processor(X:pd.DataFrame, target:str)-> Callable[[pd.DataFrame], pd.DataFrame]:
+def generate_processor(X:pd.DataFrame, target:str)-> Tuple[Callable[[pd.DataFrame], pd.DataFrame],str]:
     """
     generate a preprocessor
 
     :param X: DataFrame (quasi-raw data)
     :param target: name of the target variable
-    :return: function converting a raw data into a feature matrix
+    :return: (function converting a raw data into a feature matrix, name of logic)
     """
 
     """
@@ -41,6 +41,9 @@ def generate_processor(X:pd.DataFrame, target:str)-> Callable[[pd.DataFrame], pd
     
     A transformer such as LabelBinarizer must be trained here.
     """
+
+    ## do not forget to give a name to your logic
+    logic = "plain"
 
     from sklearn.preprocessing import LabelBinarizer
 
@@ -50,7 +53,6 @@ def generate_processor(X:pd.DataFrame, target:str)-> Callable[[pd.DataFrame], pd
     X["Date"] = X["Time"].apply(to_day)
     lb = LabelBinarizer()
     lb.fit(X["Date"])
-
 
     def preprocessor(X: pd.DataFrame) -> pd.DataFrame:
         """
@@ -86,13 +88,12 @@ def generate_processor(X:pd.DataFrame, target:str)-> Callable[[pd.DataFrame], pd
 
         return X
 
-    return preprocessor
+    return preprocessor, logic
 
 @click.command(help="Convert the tables into a feature matrix and store the convert function.")
 @click.option("--table", default=None) ## CSV
 @click.option("--retrieval_time", default=None) ## CSV
-@click.option("--logic", default="plain")
-def processing(table:str, retrieval_time:str, logic:str):
+def processing(table:str, retrieval_time:str):
     ts_start = int(datetime.now().timestamp())
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
 
@@ -104,7 +105,7 @@ def processing(table:str, retrieval_time:str, logic:str):
 
     mlflow.set_experiment("model")
     with mlflow.start_run():
-        preprocessor = generate_processor(df_train, target)
+        preprocessor, logic = generate_processor(df_train, target)
 
         ## define the argument of enrichment.store_artifact
         data = { "processor": preprocessor,

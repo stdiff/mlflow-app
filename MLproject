@@ -15,8 +15,7 @@ entry_points:
     parameters:
       table: string
       retrieval_time: string
-      logic: {type: string, default: plain}
-    command: "PYTHONPATH=. python processing/processing.py --table {table} --retrieval_time {retrieval_time} --logic {logic}"
+    command: "PYTHONPATH=. python processing/processing.py --table {table} --retrieval_time {retrieval_time}"
 
   model:
     parameters:
@@ -24,3 +23,4 @@ entry_points:
       processed_time: string
       random_state: {type: float, default: 3}
     command: "PYTHONPATH=. python model/plr.py --logic {logic} --processed_time {processed_time} --random_state {random_state}"
+

@@ -136,7 +136,7 @@ def train_the_best_model(X_train:Union[pd.DataFrame,np.ndarray], y_train:Union[p
     assert all(v is not None for k,v in result.items())
     return result
 
-@click.command(help="")
+@click.command(help="Training a mathematical model")
 @click.option("--logic", default=None)
 @click.option("--processed_time", default=None)
 @click.option("--random_state", default=3)

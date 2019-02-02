@@ -19,6 +19,14 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 
+"""
+NOTE: The rule of the names should be decided by team at first and not be changed.    
+"""
+from collections import OrderedDict
+
+exp_to_key = {"load": "table", "processing": "logic", "model": "algorithm"}
+exp_to_time = {"load": "retrieval_time", "processing": "processed_time", "model": "trained_time"}
+
 class ExperimentNotFoundError(Exception):
     pass
 
@@ -103,12 +111,6 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
     :return: (uuid of the found run, artifact_uri of the run, retrieval/processed/trained_time)
     """
 
-    """
-    NOTE: The rule of the names should be decided by team at first and not be changed.    
-    """
-    exp_to_key = {"load": "table", "processing": "logic", "model": "algorithm"}
-    exp_to_time = {"load": "retrieval_time", "processing": "processed_time", "model": "trained_time"}
-
     try:
         query_dict = {exp_to_key[experiment]: query, exp_to_time[experiment]: str(run_time)}
         experiment_id = client.get_experiment_by_name(experiment).experiment_id
@@ -167,6 +169,59 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
 
     else:
         raise ValueError("The value of retrieval_time is invalid.")
+
+
+def get_latest_run_time(client:mlflow.tracking.MlflowClient, source_experiment:str,
+                   source_run_time:int, source_query:str, target_query:str) -> int:
+    """
+    get the latest target run. A run in processing or model is based on a run in load or processing,
+    respectively. In such a case we call the former the target run and the latter the source run.
+    That is, the target run is based on the source run.
+
+    Given the source run, this function look for the latest target run. If there is no target run,
+    then RunNotFoundError is raised.
+
+    :param client: mlflow.tracking.MlflowClient
+    :param source_experiment: experiment where you want to look for a run
+    :param source_run_time: run_time of the source run
+    :param source_query: query (table or logic) of the source run
+    :param target_query: query (logic or algorithm) of the source run
+    :return: run_time of the target run
+    """
+
+    if source_experiment == "load":
+        target_experiment = "processing"
+    else:
+        target_experiment = "model"
+
+    experiment_id = client.get_experiment_by_name(target_experiment)
+    found_run_time = 0
+    for run_info in client.list_run_infos(experiment_id):
+        run = client.get_run(run_info.run_uuid)
+
+        param_dict = {param.key: param.value for param in run.data.params} ##
+
+        ## filter source_query
+        if param_dict[exp_to_key[source_experiment]] != source_query:
+            continue
+
+        ## filter source_run_time
+        if param_dict[exp_to_time[source_experiment]] != source_run_time:
+            continue
+
+        if param_dict[exp_to_key[target_experiment]] != target_query:
+            continue
+
+        param_unixtime = int(param_dict[exp_to_time[source_experiment]]) ## run_time
+        if param_unixtime < source_run_time:
+            continue
+        else:
+            found_run_time = param_unixtime
+
+    if found_run_time:
+        return found_run_time
+    else:
+        raise RunNotFoundError
 
 
 def get_artifact(client:mlflow.tracking.MlflowClient, run_uuid:str, artifact_uri:str,
