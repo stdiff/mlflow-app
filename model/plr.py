@@ -150,8 +150,6 @@ def train(logic:str, processed_time:str, random_state:int):
     df = enrichment.get_artifact(client, run_uuid, artifact_uri, file_name="training_set")
     processor = enrichment.get_artifact(client, run_uuid, artifact_uri, file_name="processor")
 
-    df = df.head(10000)
-
     ## split the data set into a training set and a validation set
     from sklearn.model_selection import train_test_split
     X_train, X_val, y_train, y_val = train_test_split(df.drop(target, axis=1), df[target],
