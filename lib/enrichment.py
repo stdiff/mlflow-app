@@ -127,7 +127,10 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
             run = client.get_run(run_info.run_uuid)
             param_dict = {param.key: param.value for param in run.data.params}
 
-            param_run_time = param_dict[exp_to_time[experiment]]
+            try:
+                param_run_time = param_dict[exp_to_time[experiment]]
+            except KeyError:
+                raise RunNotFoundError
 
             print(exp_to_time[experiment],param_run_time)
 
@@ -137,13 +140,18 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
 
         raise RunNotFoundError("There is no run with the given condition.")
 
-    elif isinstance(run_time, str):
+    elif run_time and isinstance(run_time, str):
         ### retrieval_time is a date in YYYY-MM-DD
         print("Looking for the newest dataset %s on %s" % (query,run_time))
         if tz is None:
             raise ValueError("'tz' object is None.")
 
-        d = datetime.strptime(run_time, "%Y-%m-%d")
+        try:
+            d = datetime.strptime(run_time, "%Y-%m-%d")
+        except ValueError as e:
+            print("run_time is not in the ISO format:", run_time)
+            raise RunNotFoundError
+
         query_date = tz.localize(datetime(year=d.year, month=d.month, day=d.day)).date()
 
         max_param_time = 0
@@ -170,7 +178,7 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
             raise RunNotFoundError("There is no run with the given condition.")
 
     else:
-        raise ValueError("The value of retrieval_time is invalid.")
+        raise RunNotFoundError("The value of run_time is invalid: %s" % run_time)
 
 
 def get_latest_run_time(client:mlflow.tracking.MlflowClient, source_experiment:str,

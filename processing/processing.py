@@ -6,11 +6,6 @@ run:
   metrics: ncol, nrow_train, nrow_test
 """
 
-import sys
-print("You are working on", sys.version)
-for p in sys.path:
-    print(p)
-
 import click
 from typing import Callable, Tuple
 from datetime import datetime

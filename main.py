@@ -50,14 +50,17 @@ def main(retrieval_time:str, table:str, logic:str, algorithm:str):
     ## Step 1: load
     print("-- Checking a run in load")
     try:
-        run_uuid, _, retrieval_time_ts = enrichment.look_up_run(
-            client, experiment="load", query=table, run_time=retrieval_time, tz=tz)
-        print("A run is found.")
+        if retrieval_time:
+            run_uuid, _, retrieval_time_ts = enrichment.look_up_run(
+                client, experiment="load", query=table, run_time=retrieval_time, tz=tz)
+            print("A run is found.")
+        else:
+            raise RunNotFoundError
 
     except RunNotFoundError:
         print("We start a new run (load)")
         experiment_id = client.get_experiment_by_name("load").experiment_id
-        new_run = mlflow.run(".", entry_point="load", experiment_id=experiment_id,
+        new_run = mlflow.run(".", entry_point="load", experiment_id=experiment_id, use_conda=False,
                              parameters={"retrieval_time":None})
         run = client.get_run(new_run.run_id)
         ## retrieval_time
@@ -76,7 +79,7 @@ def main(retrieval_time:str, table:str, logic:str, algorithm:str):
         print("We start a new run (processing)")
         experiment_id = client.get_experiment_by_name("processing").experiment_id
         new_run = mlflow.run(".", entry_point="processing", experiment_id=experiment_id, use_conda=False,
-                             parameters={"table":table, "retrieval_time":retrieval_time})
+                             parameters={"table":table, "retrieval_time":retrieval_time_ts})
         run = client.get_run(new_run.run_id)
         ## processed_time
         param_dict = {param.key: param.value for param in run.data.params}

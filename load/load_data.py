@@ -90,12 +90,12 @@ def load(random_state, test_size, data_path, retrieval_time):
 
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
 
-    if retrieval_time:
+    if retrieval_time != "None": ## not a good logic
         ## A data is specified
-        print("Start to look up the specified data.")
+        print("Start to look up the specified data. (retrieval_time = %s)" % retrieval_time)
 
-        run_uuid, artifact_uri, _ = enrichment.look_up_run(client, tz, run_time=retrieval_time,
-                                                           query="transaction", tz=tz)
+        run_uuid, artifact_uri, _ = enrichment.look_up_run(client, experiment="load", run_time=retrieval_time,
+                                                           query="transactions", tz=tz)
         if run_uuid:
             print("you have already the data")
 
