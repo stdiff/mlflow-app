@@ -5,7 +5,7 @@ conda_env: conda.yaml
 entry_points:
   load:
     parameters:
-      retrieval_time: string
+      retrieval_time: {type:string, default: ""}
       random_state: {type: float, default: 42}
       test_size: {type: float, default: 0.4}
       data_path: {type: path, default: data/creditcardfraud.zip}
@@ -23,4 +23,12 @@ entry_points:
       processed_time: string
       random_state: {type: float, default: 3}
     command: "PYTHONPATH=. python model/plr.py --logic {logic} --processed_time {processed_time} --random_state {random_state}"
+
+  main:
+    parameters:
+      retrieval_time: {type:string, default: ""}
+      table: string
+      logic: string
+      algorithm: string
+    command: "PYTHONPATH=. python main.py --retrieval_time {retrieval_time} --table {table} --logic {logic} --algorithm {algorithm}"
 

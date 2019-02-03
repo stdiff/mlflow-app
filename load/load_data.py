@@ -103,6 +103,8 @@ def load(random_state, test_size, data_path, retrieval_time):
         ## No data is specified
         print("Start to store the data as artifacts.")
         retrieval_time = int(datetime.now().timestamp())
+        print("retrieval_time:", retrieval_time)
+        print("in date:", datetime.now())
 
         mlflow.set_experiment("load")
         with mlflow.start_run():

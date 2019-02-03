@@ -146,7 +146,7 @@ def train(logic:str, processed_time:str, random_state:int):
 
     ## Retrieve the processed data and preprocessor
     run_uuid, artifact_uri, processed_time = enrichment.look_up_run(
-        client, "processing", query="plain", run_time=processed_time, tz=tz)
+        client, "processing", query="plain", run_time=processed_time, tz=tz) ##
     df = enrichment.get_artifact(client, run_uuid, artifact_uri, file_name="training_set")
     processor = enrichment.get_artifact(client, run_uuid, artifact_uri, file_name="processor")
 

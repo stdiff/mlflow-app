@@ -48,23 +48,35 @@ def main(retrieval_time:str, table:str, logic:str, algorithm:str):
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
 
     ## Step 1: load
+    print("-- Checking a run in load")
     try:
-        run_uuid, _, retrieval_time = enrichment.look_up_run(
+        run_uuid, _, retrieval_time_ts = enrichment.look_up_run(
             client, experiment="load", query=table, run_time=retrieval_time, tz=tz)
+        print("A run is found.")
+
     except RunNotFoundError:
-        new_run = mlflow.run(".", "load", parameters={"retrieval_time":None})
+        print("We start a new run (load)")
+        experiment_id = client.get_experiment_by_name("load").experiment_id
+        new_run = mlflow.run(".", entry_point="load", experiment_id=experiment_id,
+                             parameters={"retrieval_time":None})
         run = client.get_run(new_run.run_id)
         ## retrieval_time
         param_dict = {param.key: param.value for param in run.data.params}
-        retrieval_time = param_dict["retrieval_time"]
+        retrieval_time_ts = param_dict["retrieval_time"]
 
     ## Step 2: processing
+    print("-- Checking a run in processing")
     try:
         processed_time = enrichment.get_latest_run_time(client, source_experiment="load",
-                                                        source_run_time=retrieval_time,
+                                                        source_run_time=retrieval_time_ts,
                                                         source_query=table, target_query=logic)
+        print("A run is found.")
+
     except RunNotFoundError:
-        new_run = mlflow.run(".", "processing", parameters={"table":table, "retrieval_time":retrieval_time})
+        print("We start a new run (processing)")
+        experiment_id = client.get_experiment_by_name("processing").experiment_id
+        new_run = mlflow.run(".", entry_point="processing", experiment_id=experiment_id, use_conda=False,
+                             parameters={"table":table, "retrieval_time":retrieval_time})
         run = client.get_run(new_run.run_id)
         ## processed_time
         param_dict = {param.key: param.value for param in run.data.params}
@@ -74,20 +86,30 @@ def main(retrieval_time:str, table:str, logic:str, algorithm:str):
             raise ValueError("The run has a logic which is different from the logic you gave.")
 
     ## Step 3: model
+    print("-- Checking a run in model")
     try:
         trained_time = enrichment.get_latest_run_time(client, source_experiment="processing",
                                                       source_run_time=processed_time,
                                                       source_query=logic, target_query=algorithm)
+        print("A run is found.")
+
     except RunNotFoundError:
-        new_run = mlflow.run(".", "model", parameters={"logic":logic, "processed_time":processed_time,
-                                                            "algorithm":algorithm}) ########
+        print("We start a new run (modell)")
+        experiment_id = client.get_experiment_by_name("model").experiment_id
+        new_run = mlflow.run(".", entry_point="model", experiment_id=experiment_id, use_conda=False,
+                             parameters={"logic":logic, "processed_time":processed_time, "random_state":3})
         run = client.get_run(new_run.run_id)
+
         ## processed_time
         param_dict = {param.key: param.value for param in run.data.params}
         trained_time = param_dict["trained_time"]
 
         if algorithm != param_dict["algorithm"]:
             raise ValueError("The run has an algorithm which is different from the algorithm you gave.")
+
+    mlflow.log_param("retrieval_time", retrieval_time_ts) ## overwrite
+    mlflow.log_metric("processed_time", processed_time)
+    mlflow.log_metric("trained_time", trained_time)
 
 
 if __name__ == "__main__":

@@ -22,8 +22,6 @@ import pandas as pd
 """
 NOTE: The rule of the names should be decided by team at first and not be changed.    
 """
-from collections import OrderedDict
-
 exp_to_key = {"load": "table", "processing": "logic", "model": "algorithm"}
 exp_to_time = {"load": "retrieval_time", "processing": "processed_time", "model": "trained_time"}
 
@@ -119,15 +117,19 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
     except AttributeError:
         raise ExperimentNotFoundError("The experiment '%s' cannot be found." % experiment)
 
-    #####
-    print("Searching a run in expeciment '%s'" % experiment)
-    if re.match(r"\d+$", query_dict[exp_to_time[experiment]]):
+    print("Searching a run in experiment '%s'" % experiment)
+
+    if re.match(r"\d+$", str(run_time)):
         ### retrieval_time is a unixtime
-        print("Looking for the exact dataset (run_time=%s)" % run_time)
+        print("Looking for the exact dataset (run_time=%s, query=%s)" % (run_time,query))
 
         for run_info in client.list_run_infos(experiment_id):
             run = client.get_run(run_info.run_uuid)
             param_dict = {param.key: param.value for param in run.data.params}
+
+            param_run_time = param_dict[exp_to_time[experiment]]
+
+            print(exp_to_time[experiment],param_run_time)
 
             if set(query_dict.keys()).issubset(param_dict.keys()):
                 if all([query_dict[k] == param_dict[k] for k in query_dict.keys()]):
@@ -137,11 +139,11 @@ def look_up_run(client:mlflow.tracking.MlflowClient, experiment:str,
 
     elif isinstance(run_time, str):
         ### retrieval_time is a date in YYYY-MM-DD
-        print("Looking for the newest dataset on %s" % run_time)
+        print("Looking for the newest dataset %s on %s" % (query,run_time))
         if tz is None:
             raise ValueError("'tz' object is None.")
 
-        d = datetime.strptime(run_time, "%Y-%M-%d")
+        d = datetime.strptime(run_time, "%Y-%m-%d")
         query_date = tz.localize(datetime(year=d.year, month=d.month, day=d.day)).date()
 
         max_param_time = 0
@@ -194,29 +196,46 @@ def get_latest_run_time(client:mlflow.tracking.MlflowClient, source_experiment:s
     else:
         target_experiment = "model"
 
-    experiment_id = client.get_experiment_by_name(target_experiment)
+    source_run_time = int(source_run_time)
+    experiment_id = client.get_experiment_by_name(target_experiment).experiment_id
     found_run_time = 0
+
+    print("Looking for the newest target run having the given source run.")
+    print("SOURCE: experiment: %s, query: %s, run_time: %s" % (source_experiment, source_query, source_run_time))
+    print("TARGET: experiment: %s, query: %s" % (target_experiment, target_query))
+
     for run_info in client.list_run_infos(experiment_id):
         run = client.get_run(run_info.run_uuid)
 
         param_dict = {param.key: param.value for param in run.data.params} ##
 
+        try:
+            param_source_query = param_dict[exp_to_key[source_experiment]]
+            param_source_run_time = int(param_dict[exp_to_time[source_experiment]])
+
+            param_target_query = param_dict[exp_to_key[target_experiment]]
+            param_target_run_time = int(param_dict[exp_to_time[target_experiment]])
+
+        except Exception as e:
+            print("There is an invalid run (%s): %s" % (run_info.run_uuid,e))
+            continue
+
         ## filter source_query
-        if param_dict[exp_to_key[source_experiment]] != source_query:
+        if param_source_query != source_query:
             continue
 
         ## filter source_run_time
-        if param_dict[exp_to_time[source_experiment]] != source_run_time:
+        if param_source_run_time != source_run_time:
             continue
 
-        if param_dict[exp_to_key[target_experiment]] != target_query:
+        ## filter target_query
+        if param_target_query != target_query:
             continue
 
-        param_unixtime = int(param_dict[exp_to_time[source_experiment]]) ## run_time
-        if param_unixtime < source_run_time:
+        if param_source_run_time < source_run_time:
             continue
         else:
-            found_run_time = param_unixtime
+            found_run_time = param_target_run_time
 
     if found_run_time:
         return found_run_time
