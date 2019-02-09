@@ -86,7 +86,7 @@ def retrieve_data(data_path:str, test_size:float, retrieval_time:Union[str,int],
 @click.option("--test_size", default=0.4)
 @click.option("--data_path", default="data/creditcardfraud.zip")
 @click.option("--retrieval_time", default=None)
-def load(random_state, test_size, data_path, retrieval_time):
+def load(table, random_state, test_size, data_path, retrieval_time):
     print("-" * 20 + " load start")
 
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
