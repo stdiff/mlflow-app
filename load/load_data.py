@@ -81,6 +81,7 @@ def retrieve_data(data_path:str, test_size:float, retrieval_time:Union[str,int],
 
 
 @click.command(help="Register an original data set, a training set and a test set.")
+@click.option("--table", default=None)
 @click.option("--random_state", default=42)
 @click.option("--test_size", default=0.4)
 @click.option("--data_path", default="data/creditcardfraud.zip")
@@ -89,6 +90,7 @@ def load(random_state, test_size, data_path, retrieval_time):
     print("-" * 20 + " load start")
 
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
+    mlflow.set_experiment("load")
 
     if retrieval_time != "None": ## not a good logic
         ## A data is specified
@@ -106,7 +108,6 @@ def load(random_state, test_size, data_path, retrieval_time):
         print("retrieval_time:", retrieval_time)
         print("in date:", datetime.now())
 
-        mlflow.set_experiment("load")
         with mlflow.start_run():
             ## Check if the original data can be found
             if enrichment.sha256sum(data_path) != config["data"]["checksum"]:

@@ -5,6 +5,7 @@ conda_env: conda.yaml
 entry_points:
   load:
     parameters:
+      table: string
       retrieval_time: {type:string, default: ""}
       random_state: {type: float, default: 42}
       test_size: {type: float, default: 0.4}
