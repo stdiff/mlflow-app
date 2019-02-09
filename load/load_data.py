@@ -92,7 +92,7 @@ def load(table, random_state, test_size, data_path, retrieval_time):
     client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow"]["tracking_uri"])
     mlflow.set_experiment("load")
 
-    if retrieval_time != "None": ## not a good logic
+    if retrieval_time: ## not a good logic
         ## A data is specified
         print("Start to look up the specified data. (retrieval_time = %s)" % retrieval_time)
 
