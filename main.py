@@ -110,9 +110,12 @@ def main(retrieval_time:str, table:str, logic:str, algorithm:str):
         if algorithm != param_dict["algorithm"]:
             raise ValueError("The run has an algorithm which is different from the algorithm you gave.")
 
-    mlflow.log_param("retrieval_time", retrieval_time_ts) ## overwrite
-    mlflow.log_metric("processed_time", processed_time)
-    mlflow.log_metric("trained_time", trained_time)
+
+    ## save the result
+    with mlflow.start_run():
+        mlflow.log_param("retrieval_time", retrieval_time_ts) ## overwrite
+        mlflow.log_metric("processed_time", int(processed_time))
+        mlflow.log_metric("trained_time", int(trained_time))
 
 
 if __name__ == "__main__":
